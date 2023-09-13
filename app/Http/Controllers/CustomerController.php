@@ -3,9 +3,11 @@
 namespace App\Http\Controllers;
 
 use App\Models\User;
-use App\Models\medical_store_list;
+use App\Models\MedicalStoreList;
 use App\Models\SubscriptionPlan;
+use App\Models\PatientType;
 use App\Models\Orders;
+use App\Models\Prices;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\Hash;
@@ -16,7 +18,16 @@ use Image;
 
 class CustomerController extends Controller
 {
-    /**register user */
+    /** validation*/
+    private function check_order_exit($order_id)
+    {
+        if (Orders::where('order_id', '=', $order_id)->exists() == 'true') { 
+            return true;
+        } else {  
+            return false;
+        }
+    } 
+     /**register user */
     public function register(Request $request)
     {
         $validator = Validator::make($request->all(), [
@@ -282,19 +293,45 @@ class CustomerController extends Controller
     public function search(Request $request)
     {
         $json = [];
-        $results  = medical_store_list::where('store_name', 'LIKE', "%$request->search_key%")->get();
+        $results  = MedicalStoreList::where('store_name', 'LIKE', "%$request->search_key%")->get();
         if ($results) {
             return response()->json(['status' => true, 'store_info' => $results], 200);
         } else {
             return response()->json(['status' => false, 'store_info' => []], 404);
         }
     }
-    /***create_order */
+    /*** subscription plan_dynamic */
+    public function subscription_plan(Request $request)
+    {
+        $SubscriptionPlan = SubscriptionPlan::where('is_delete', 0)->get();
+        if ($SubscriptionPlan) {
+            return response()->json(["status" => true, 'subscription_plan' => $SubscriptionPlan], 200);
+        } else {
+            return response()->json(["status" => false, 'subscription_plan' => [], 'message' => 'Data not found'], 404);
+        }
+    }
+    /*** create order - Get store list */
+    public function store_list(Request $request)
+    {
+        $json =[];
+        $result_stores = MedicalStoreList::orderBy('store_id', 'DESC')->get();  
+        if (count($result_stores) > 0) {  
+            foreach($result_stores as $var){
+               unset($var->created_at);
+               unset($var->updated_at);
+               $json[] = $var;
+            }           
+            return response()->json(["status" => true, 'Medical_store_list' => $json], 200);
+        } else {
+            return response()->json(["status" => false, 'Medical_store_list' => [], 'message' => 'Data not found'], 404);
+        }
+    }
+    /***create_order - medicine*/
     public function create_order(Request $request)
     {
         $validator = Validator::make($request->all(), [
-            "select_delivery_date" => 'bail|required',
-            "select_delivery_time" => 'bail|required'
+            "store_id" => 'bail|integer|required',
+            "medicine_qty" => 'bail|integer|required'
         ]);
         if ($validator->fails()) {
             return response()->json([
@@ -305,8 +342,8 @@ class CustomerController extends Controller
         try {
             $orders = new Orders();
             $orders->user_id = Auth::id();
-            $orders->delivery_date = $request->select_delivery_date;
-            $orders->delivery_time = $request->select_delivery_time;
+            $orders->store_id = $request->store_id;
+            $orders->medical_qty = $request->medicine_qty;
             if ($orders->save()) {
                 return response()->json(['success' => true, 'message' => 'Order created successfully', 'last_insert_id' => $orders->id], 200);
             }
@@ -314,19 +351,135 @@ class CustomerController extends Controller
             return response()->json(['status' => 'error', 'message' => 'Failed to create the order: ' . $e->getMessage()], 500);
         }
     }
-    /*** subscription plan_dynamic */
-    public function subscription_plan(Request $request)
+    /***create_order - pickup date */
+    public function update_pickup_order(Request $request)
     {
-        $SubscriptionPlan = SubscriptionPlan::where('is_delete',0)->get();
-        if($SubscriptionPlan)
-        {
-            return response()->json(["status" => true , 'subscription_plan' => $SubscriptionPlan],200);
-        }else{
-            return response()->json(["status" => false , 'subscription_plan' => [], 'subscription_plan_list' => 'Data not found'],404);
+        $validator = Validator::make($request->all(), [
+            "order_id" => 'bail|integer|required',
+            "select_pickup_date" => 'bail|required',
+            "select_pickup_time" => 'bail|required'
+        ]);
+        if ($validator->fails()) {
+            return response()->json([
+                'validation_errors' => $validator->messages(),
+            ], 422);
+        }
+        /***update order */
+        try { 
+            $update_order = Orders::where("order_id",$request->order_id)->update(["pickup_date"=>$request->select_pickup_date, "pickup_time"=>$request->select_pickup_time,]);
+            if (!$update_order) {
+                return response()->json(['success' => false, 'message' => ' Failed to  Order update', 'last_insert_id' => ''], 500);
+            }else{
+                return response()->json(['success' => true, 'message' => 'Order update successfully', 'last_insert_id' => $request->order_id], 200);     
+            }
+        } catch (\Exception $e) {
+            return response()->json(['status' => 'error', 'message' => 'Failed to create the order: ' . $e->getMessage(),'last_insert_id' => ''], 500);
         }
     }
-    
-
-
-
+    /***create_order - delivery date */
+    public function update_delivery_order(Request $request)
+    {
+        $validator = Validator::make($request->all(), [
+            "order_id" => 'bail|integer|required',
+            "select_delivery_date" => 'bail|required',
+            "select_delivery_time" => 'bail|required',
+            "address" => 'bail|required',
+            "note" => 'bail|required',
+        ]);
+        if ($validator->fails()) {
+            return response()->json([
+                'validation_errors' => $validator->messages(),
+            ], 422);
+        }
+        /***update order */
+        try { 
+            $update_order = Orders::where("order_id",$request->order_id)->update([
+                 "delivery_date"=>$request->select_delivery_date,
+                 "delivery_time"=>$request->select_delivery_time,
+                 "address"=>$request->address,
+                 "note"=>$request->note
+                ]);
+            if (!$update_order) {
+                return response()->json(['success' => false, 'message' => ' Failed to  Order update', 'last_insert_id' => ''], 500);
+            }else{
+                return response()->json(['success' => true, 'message' => 'Order update successfully', 'last_insert_id' => $request->order_id], 200);     
+            }
+        } catch (\Exception $e) {
+            return response()->json(['status' => 'error', 'message' => 'Failed to create the order: ' . $e->getMessage(),'last_insert_id' => ''], 500);
+        }
+    }
+    /*** create order - Get store list */
+    public function patient_type_list(Request $request)
+    {
+        $json=[];
+        $result_patient_type = PatientType::orderBy('id', 'DESC')->get();  
+        if (count($result_patient_type) > 0) 
+        {   
+            foreach ($result_patient_type as $var) {
+                unset($var->created_at);
+                unset($var->updated_at);
+                $json[] = $var;
+            }
+            return response()->json(["status" => true, 'patient_type_list' => $json], 200);
+        } else {
+            return response()->json(["status" => false, 'patient_type_list' => $json, 'message' => 'Data not found'], 404);
+        }
+    }
+    /***create_order - patient_type */
+    public function update_patient_type(Request $request)
+    {
+        $validator = Validator::make($request->all(), [
+            "order_id" => 'bail|integer|required',
+            "patient_id" => 'bail|required',
+        ]);
+        if ($validator->fails()) {
+            return response()->json([
+                'validation_errors' => $validator->messages(),
+            ], 422);
+        }
+        /***update order */
+        try { 
+            $update_order = Orders::where("order_id",$request->order_id)->update([
+                 "patient_id"=>$request->patient_id,
+                ]);
+            if (!$update_order) {
+                return response()->json(['success' => false, 'message' => ' Failed to  Order update', 'last_insert_id' => ''], 500);
+            }else{
+                return response()->json(['success' => true, 'message' => 'Order update successfully', 'last_insert_id' => $request->order_id], 200);     
+            }
+        } catch (\Exception $e) {
+            return response()->json(['status' => 'error', 'message' => 'Failed to create the order: ' . $e->getMessage(),'last_insert_id' => ''], 500);
+        }
+    }
+    /***create order - checkout */
+    public function order_checkout(Request $request)
+    {
+        if(!isset($_GET['order_id']) || ($_GET['order_id'] == '') || ($_GET['order_id'] == '0') || ($this->check_order_exit($_GET['order_id']) != 'true'))
+        {
+            return response()->json(['status'=>  false,'message'=> 'Order id not correct'], 500);
+        }
+        $json = [];
+        /**price */
+        $result_prices = Prices::orderBy('id', 'DESC')->get('price');
+        if (count($result_prices) > 0) {
+            foreach ($result_prices as $var) {
+                unset($var->created_at);
+                unset($var->updated_at);
+                $json = $var;
+            }
+            $json['order_id'] = $_GET['order_id'];   /// order_id
+            $json['delivery_price'] = '18';   /// delivery_price
+            $json['total'] = (int)$json['price'] + (int)$json['delivery_price'];   /// total price
+            $order_result = orders::where('order_id','=',$_GET['order_id'])->first('medical_qty');
+            $json['qty'] = $order_result->medical_qty ? $order_result->medical_qty : '0';  /// oder quentity
+            /**final response */
+            return response()->json(["status" => true, 'price_details' => $json], 200);
+        } else {
+            return response()->json(["status" => false, 'price_details' => $json, 'message' => 'Data not found'], 404);
+        }
+    }
+    /** after payment done status update */
+    public function payment_done_status(Request $request){
+     dd($request->all());
+    }
 }

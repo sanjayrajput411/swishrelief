@@ -9,13 +9,13 @@ use Illuminate\Notifications\Notifiable;
 // use Laravel\Sanctum\HasApiTokens;
 use Laravel\Passport\HasApiTokens;
 
-class medical_store_list extends Model
+class PatientType extends Model
 {
     use HasApiTokens, HasFactory, Notifiable;
     /**
      * @var string $table
      */
-    protected $table = 'medical_store_list';
+    protected $table = 'patient_type';
 
     /**
      * @var array $fillable

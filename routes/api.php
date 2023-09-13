@@ -29,6 +29,13 @@ Route::group(['middleware' => ['auth:api']], function () {
     Route::get('/edit_profile', [CustomerController::class, 'edit_profile']); 
     Route::post('/update_profile', [CustomerController::class, 'update_profile']); 
     Route::post('/search', [CustomerController::class, 'search']); 
-    Route::post('/create_order', [CustomerController::class, 'create_order']); 
     Route::get('/subscription_plan', [CustomerController::class, 'subscription_plan']); 
+    Route::get('/store_list', [CustomerController::class, 'store_list']); 
+    Route::get('/patient_type_list', [CustomerController::class, 'patient_type_list']); 
+    Route::post('/create_order', [CustomerController::class, 'create_order']); 
+    Route::post('/update_pickup_order', [CustomerController::class, 'update_pickup_order']); 
+    Route::post('/update_delivery_order', [CustomerController::class, 'update_delivery_order']); 
+    Route::post('/update_patient_type', [CustomerController::class, 'update_patient_type']); 
+    Route::get('/order_checkout', [CustomerController::class, 'order_checkout']); 
+    Route::post('/payment_done_status', [CustomerController::class, 'payment_done_status']); 
 });
