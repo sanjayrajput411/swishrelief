@@ -17,6 +17,8 @@ return new class extends Migration
             $table->integer('store_mobile_number')->nullable();
             $table->text('store_address')->nullable();
             $table->string('store_image')->nullable();
+            $table->string('latitude')->nullable();
+            $table->string('longitude')->nullable();
             $table->timestamps();
         });
     }

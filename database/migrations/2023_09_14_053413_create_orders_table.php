@@ -23,9 +23,10 @@ return new class extends Migration
             $table->string('pickup_time')->nullable();
             $table->string('delivery_date')->nullable();
             $table->string('delivery_time')->nullable();
-            $table->integer('orders_price')->nullable();
-            $table->integer('delivery_price')->nullable();
-            $table->integer('total_order_price')->nullable();
+			$table->integer('order_qty')->nullable();
+            $table->decimal('orders_price', 10, 2)->nullable();
+            $table->decimal('delivery_price', 10, 2)->nullable();
+            $table->decimal('total_order_price', 10, 2)->nullable();
             $table->tinyInteger('order_status')->default('0');
             $table->timestamps();
         });

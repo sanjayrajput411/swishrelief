@@ -8,26 +8,30 @@ use App\Models\SubscriptionPlan;
 use App\Models\PatientType;
 use App\Models\Orders;
 use App\Models\Prices;
+use App\Models\ContactForm;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Password;
 use DB;
-use Image;
+use Intervention\Image\Facades\Image;
+use Illuminate\Support\Facades\Mail;
+use App\Mail\ContactMail;
+
 
 class CustomerController extends Controller
 {
     /** validation*/
     private function check_order_exit($order_id)
     {
-        if (Orders::where('order_id', '=', $order_id)->exists() == 'true') { 
+        if (Orders::where('order_id', '=', $order_id)->exists() == 'true') {
             return true;
-        } else {  
+        } else {
             return false;
         }
-    } 
-     /**register user */
+    }
+    /**register user */
     public function register(Request $request)
     {
         $validator = Validator::make($request->all(), [
@@ -62,7 +66,7 @@ class CustomerController extends Controller
             ], 200);
         }
     }
-        /*** register - add address  */
+    /*** register - add address  */
     public function add_address(Request $request)
     {
         $validator = Validator::make($request->all(), [
@@ -125,7 +129,7 @@ class CustomerController extends Controller
     }
     /*** register - otp varfied */
     public function otp_verified(Request $request)
-    {  
+    {
         $validator = Validator::make($request->all(), [
             'otp' => 'bail|required|numeric|digits:4',
             'userid' => 'bail|required|numeric'
@@ -156,7 +160,7 @@ class CustomerController extends Controller
     {
         $validator = Validator::make($request->all(), [
             'profile_image' => 'bail|required|image|mimes:jpeg,png,jpg,gif,svg|max:2048',
-            'userid' => 'bail|required|numeric'
+            'userid' => 'bail|integer|numeric'
         ]);
         if ($validator->fails()) {
             return response()->json([
@@ -185,11 +189,11 @@ class CustomerController extends Controller
                 if ($upload) {
                     $update =  User::where('id', '=', $request->userid)->update(['image' => $filename]);
                     if ($update) {
-                        return response()->json(['status' => true,'message' => 'Image uploaded successfully'], 201);
+                        return response()->json(['status' => true, 'message' => 'Image uploaded successfully'], 201);
                     }
                 }
             }
-            return response()->json(['status' => false,'message' => 'Image upload failed. Please try again.'], 500);
+            return response()->json(['status' => false, 'message' => 'Image upload failed. Please try again.'], 500);
         }
     }
     /** Change password */
@@ -240,7 +244,7 @@ class CustomerController extends Controller
             $status = Password::sendResetLink(
                 $request->only('email')
             );
-            return response()->json(['status' => true,"message" => "Password reset link sent on your email id"],200);
+            return response()->json(['status' => true, "message" => "Password reset link sent on your email id"], 200);
         }
     }
     /***eidt profile */
@@ -265,7 +269,7 @@ class CustomerController extends Controller
             'mobile' => 'bail|required|numeric|digits:10',
             'address' => 'bail|required',
         ]);
-        if ($validator->fails()){
+        if ($validator->fails()) {
             return response()->json([
                 'validation_errors' => $validator->messages(),
             ], 422);
@@ -273,7 +277,7 @@ class CustomerController extends Controller
 
         $userDetails = Auth::user();  // To get the logged-in user details
         if (isset($userDetails)) {
-            $user_info = User::find($userDetails->id);  
+            $user_info = User::find($userDetails->id);
             if (!$user_info) {
                 return response()->json(['status' => false, 'message' => 'user not exit'], 404);
             }
@@ -289,17 +293,6 @@ class CustomerController extends Controller
             }
         }
     }
-    /*** search medicial store*/
-    public function search(Request $request)
-    {
-        $json = [];
-        $results  = MedicalStoreList::where('store_name', 'LIKE', "%$request->search_key%")->get();
-        if ($results) {
-            return response()->json(['status' => true, 'store_info' => $results], 200);
-        } else {
-            return response()->json(['status' => false, 'store_info' => []], 404);
-        }
-    }
     /*** subscription plan_dynamic */
     public function subscription_plan(Request $request)
     {
@@ -313,14 +306,14 @@ class CustomerController extends Controller
     /*** create order - Get store list */
     public function store_list(Request $request)
     {
-        $json =[];
-        $result_stores = MedicalStoreList::orderBy('store_id', 'DESC')->get();  
-        if (count($result_stores) > 0) {  
-            foreach($result_stores as $var){
-               unset($var->created_at);
-               unset($var->updated_at);
-               $json[] = $var;
-            }           
+        $json = [];
+        $result_stores = MedicalStoreList::orderBy('store_id', 'DESC')->get();
+        if (count($result_stores) > 0) {
+            foreach ($result_stores as $var) {
+                unset($var->created_at);
+                unset($var->updated_at);
+                $json[] = $var;
+            }
             return response()->json(["status" => true, 'Medical_store_list' => $json], 200);
         } else {
             return response()->json(["status" => false, 'Medical_store_list' => [], 'message' => 'Data not found'], 404);
@@ -331,7 +324,7 @@ class CustomerController extends Controller
     {
         $validator = Validator::make($request->all(), [
             "store_id" => 'bail|integer|required',
-            "medicine_qty" => 'bail|integer|required'
+            "medicine_qty" => 'bail|numeric|required'
         ]);
         if ($validator->fails()) {
             return response()->json([
@@ -365,15 +358,15 @@ class CustomerController extends Controller
             ], 422);
         }
         /***update order */
-        try { 
-            $update_order = Orders::where("order_id",$request->order_id)->update(["pickup_date"=>$request->select_pickup_date, "pickup_time"=>$request->select_pickup_time,]);
+        try {
+            $update_order = Orders::where("order_id", $request->order_id)->update(["pickup_date" => $request->select_pickup_date, "pickup_time" => $request->select_pickup_time,]);
             if (!$update_order) {
                 return response()->json(['success' => false, 'message' => ' Failed to  Order update', 'last_insert_id' => ''], 500);
-            }else{
-                return response()->json(['success' => true, 'message' => 'Order update successfully', 'last_insert_id' => $request->order_id], 200);     
+            } else {
+                return response()->json(['success' => true, 'message' => 'Order update successfully', 'last_insert_id' => $request->order_id], 200);
             }
         } catch (\Exception $e) {
-            return response()->json(['status' => 'error', 'message' => 'Failed to create the order: ' . $e->getMessage(),'last_insert_id' => ''], 500);
+            return response()->json(['status' => 'error', 'message' => 'Failed to create the order: ' . $e->getMessage(), 'last_insert_id' => ''], 500);
         }
     }
     /***create_order - delivery date */
@@ -392,29 +385,28 @@ class CustomerController extends Controller
             ], 422);
         }
         /***update order */
-        try { 
-            $update_order = Orders::where("order_id",$request->order_id)->update([
-                 "delivery_date"=>$request->select_delivery_date,
-                 "delivery_time"=>$request->select_delivery_time,
-                 "address"=>$request->address,
-                 "note"=>$request->note
-                ]);
+        try {
+            $update_order = Orders::where("order_id", $request->order_id)->update([
+                "delivery_date" => $request->select_delivery_date,
+                "delivery_time" => $request->select_delivery_time,
+                "address" => $request->address,
+                "note" => $request->note
+            ]);
             if (!$update_order) {
                 return response()->json(['success' => false, 'message' => ' Failed to  Order update', 'last_insert_id' => ''], 500);
-            }else{
-                return response()->json(['success' => true, 'message' => 'Order update successfully', 'last_insert_id' => $request->order_id], 200);     
+            } else {
+                return response()->json(['success' => true, 'message' => 'Order update successfully', 'last_insert_id' => $request->order_id], 200);
             }
         } catch (\Exception $e) {
-            return response()->json(['status' => 'error', 'message' => 'Failed to create the order: ' . $e->getMessage(),'last_insert_id' => ''], 500);
+            return response()->json(['status' => 'error', 'message' => 'Failed to create the order: ' . $e->getMessage(), 'last_insert_id' => ''], 500);
         }
     }
     /*** create order - Get store list */
     public function patient_type_list(Request $request)
     {
-        $json=[];
-        $result_patient_type = PatientType::orderBy('id', 'DESC')->get();  
-        if (count($result_patient_type) > 0) 
-        {   
+        $json = [];
+        $result_patient_type = PatientType::orderBy('id', 'DESC')->get();
+        if (count($result_patient_type) > 0) {
             foreach ($result_patient_type as $var) {
                 unset($var->created_at);
                 unset($var->updated_at);
@@ -438,25 +430,24 @@ class CustomerController extends Controller
             ], 422);
         }
         /***update order */
-        try { 
-            $update_order = Orders::where("order_id",$request->order_id)->update([
-                 "patient_id"=>$request->patient_id,
-                ]);
+        try {
+            $update_order = Orders::where("order_id", $request->order_id)->update([
+                "patient_id" => $request->patient_id,
+            ]);
             if (!$update_order) {
                 return response()->json(['success' => false, 'message' => ' Failed to  Order update', 'last_insert_id' => ''], 500);
-            }else{
-                return response()->json(['success' => true, 'message' => 'Order update successfully', 'last_insert_id' => $request->order_id], 200);     
+            } else {
+                return response()->json(['success' => true, 'message' => 'Order update successfully', 'last_insert_id' => $request->order_id], 200);
             }
         } catch (\Exception $e) {
-            return response()->json(['status' => 'error', 'message' => 'Failed to create the order: ' . $e->getMessage(),'last_insert_id' => ''], 500);
+            return response()->json(['status' => 'error', 'message' => 'Failed to create the order: ' . $e->getMessage(), 'last_insert_id' => ''], 500);
         }
     }
     /***create order - checkout */
     public function order_checkout(Request $request)
     {
-        if(!isset($_GET['order_id']) || ($_GET['order_id'] == '') || ($_GET['order_id'] == '0') || ($this->check_order_exit($_GET['order_id']) != 'true'))
-        {
-            return response()->json(['status'=>  false,'message'=> 'Order id not correct'], 500);
+        if (!isset($_GET['order_id']) || ($_GET['order_id'] == '') || ($_GET['order_id'] == '0') || ($this->check_order_exit($_GET['order_id']) != 'true')) {
+            return response()->json(['status' =>  false, 'message' => 'Order id not correct'], 500);
         }
         $json = [];
         /**price */
@@ -470,7 +461,7 @@ class CustomerController extends Controller
             $json['order_id'] = $_GET['order_id'];   /// order_id
             $json['delivery_price'] = '18';   /// delivery_price
             $json['total'] = (int)$json['price'] + (int)$json['delivery_price'];   /// total price
-            $order_result = orders::where('order_id','=',$_GET['order_id'])->first('medical_qty');
+            $order_result = orders::where('order_id', '=', $_GET['order_id'])->first('medical_qty');
             $json['qty'] = $order_result->medical_qty ? $order_result->medical_qty : '0';  /// oder quentity
             /**final response */
             return response()->json(["status" => true, 'price_details' => $json], 200);
@@ -479,7 +470,142 @@ class CustomerController extends Controller
         }
     }
     /** after payment done status update */
-    public function payment_done_status(Request $request){
-     dd($request->all());
+    public function payment_done_status(Request $request)
+    {
+        $validator = Validator::make($request->all(), [
+            "order_id" => 'bail|numeric|required',
+            "price" => 'bail|numeric|required',
+            "delivery_price" => 'bail|numeric|required',
+            "total" => 'bail|numeric|required',
+            "qty" => 'bail|numeric|required'
+        ]);
+        if ($validator->fails()) {
+            return response()->json(['status' => false, 'validation_errors' => $validator->messages()], 422);
+        }
+        try {
+            $update_order = Orders::where("order_id", $request->order_id)->update([
+                "orders_price" => $request->price,
+                "delivery_price" => $request->delivery_price,
+                "total_order_price" => $request->total,
+                "order_qty" => $request->qty,
+                "order_status" => '1',
+            ]);
+            if (!$update_order) {
+                return response()->json(['success' => false, 'message' => ' Failed to  Order update'], 500);
+            } else {
+                return response()->json(['success' => true, 'message' => 'Order status update successfully'], 200);
+            }
+        } catch (\Exception $e) {
+            return response()->json(['status' => 'error', 'message' => 'Failed to create the order: ' . $e->getMessage()], 500);
+        }
+    }
+    /***order history */
+    public function order_history(Request $request)
+    {
+        $json = [];
+        $result_orders = Orders::select("orders.order_id", "orders.pickup_date", "orders.pickup_time", "orders.delivery_date", "orders.delivery_time", "orders.address")
+            ->where([
+                ['user_id', '=', Auth::id()],
+                ['order_status', '=', '1']
+            ])
+            ->get();
+        if (count($result_orders) > 0) {
+            foreach ($result_orders as $var) {
+                unset($var->updated_at);
+                $json[] = $var;
+            }
+            return response()->json(["status" => true, 'order_detail' => $json], 200);
+        } else {
+            return response()->json(["status" => false, 'order_detail' => $json, 'message' => 'Data not found'], 404);
+        }
+    }
+    /***order info */
+    public function order_info(Request $request)
+    {
+        if (!isset($_GET['order_id']) || ($_GET['order_id'] == '') || ($_GET['order_id'] == '0') || ($this->check_order_exit($_GET['order_id']) != 'true')) {
+            return response()->json(['status' =>  false, 'message' => 'Order id not correct'], 500);
+        }
+        $json = [];
+        $result_orders = Orders::select("orders.*", "users.name as username", "users.email as useremail", "medical_store_list.store_name", "medical_store_list.store_mobile_number", "medical_store_list.store_address", "medical_store_list.store_image", "patient_type.patient_name")
+            ->join('users', 'orders.user_id', '=', 'users.id')
+            ->join('medical_store_list', 'orders.store_id', '=', 'medical_store_list.store_id')
+            ->join('patient_type', 'orders.patient_id', '=', 'patient_type.id')
+            ->where([
+                ['orders.user_id', '=', Auth::id()],
+                ['orders.order_id', '=', $request->order_id],
+                ['orders.order_status', '=', '1']
+            ])
+            ->get();
+        if (count($result_orders) > 0) {
+            foreach ($result_orders as $var) {
+                unset($var->updated_at);
+                $json[] = $var;
+            }
+            return response()->json(["status" => true, 'order_info' => $json], 200);
+        } else {
+            return response()->json(["status" => false, 'order_info' => $json, 'message' => 'Data not found'], 404);
+        }
+    }
+    /*** search medicial store*/
+    public function search(Request $request)
+    {
+        $json=[];
+        if (isset($request->latitude) && isset($request->longitude))
+        {
+            $latitude = $request->latitude;
+            $longitude = $request->longitude;     
+            if ($request->latitude != '' && $request->longitude != '')
+            {   
+                $radius = 50; // Set your desired search radius in kilometers
+                // Calculate the bounding box coordinates for the search
+                $latRange = [$latitude - ($radius / 111), $latitude + ($radius / 111)]; // 1 degree of latitude is approximately 111 kilometers
+                $lngRange = [$longitude - ($radius / (111.32 * cos(deg2rad($latitude)))), $longitude + ($radius / (111.32 * cos(deg2rad($latitude))))];
+                // Query the database for locations within the specified range
+                $json['locations'] = MedicalStoreList::select('store_name', 'latitude', 'longitude')
+                    ->whereBetween('latitude', $latRange)
+                    ->whereBetween('longitude', $lngRange)
+                    ->get();   
+                return response()->json(['status' => true, 'message' => 'success', 'store_info' => $json], 200);
+            } else {
+                return response()->json(['status' => false, 'message' => 'Data not found', 'store_info' => $json], 404);
+            }
+        }
+
+        $results  = MedicalStoreList::where('store_name', 'LIKE', "%$request->search_key%")->get();
+        if ($results) {
+            return response()->json(['status' => true, 'message' => 'Data not found', 'store_info' => $results], 200);
+        } else {
+            return response()->json(['status' => false, 'message' => 'Data not found.', 'store_info' => []], 404);
+        }
+    }
+    /***contact_form */
+    public function contact_form(Request $request)
+    {
+       $validator = validator::make($request->all(),[
+        "username"=> 'bail|required',
+        "email" => 'bail|required|email|email:rfc,dns',
+        "note"=> 'bail|required',
+       ]);
+       if($validator->fails()){
+        return response()->json(['status' => false, 'validation_errors' => $validator->messages()], 422);
+       }
+        $data=[
+            "name"=>$request->username,
+            "email"=>$request->email,
+            "subject"=>'Contact form',
+            "message"=>$request->note
+        ];    
+             // Send the email
+        // Mail::to($request->email)->send(new ContactMail($data));
+        $ContactForm = new ContactForm;
+        $ContactForm->username = $request->username;
+        $ContactForm->email = $request->email;
+        $ContactForm->note = $request->note;
+        $ContactForm->save();
+        Mail::send('emails.contact', $data, function ($message) use ($data) {
+            $message->to($data['email']);
+            $message->subject('Swishrelief');
+          });
+        return response()->json(['status' => true, 'message' => 'Email sent successfully!', 'user_info' => $data], 200);
     }
 }
